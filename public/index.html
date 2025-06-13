@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Discord 遊戲通知系統</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .container {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
+        width: 90%;
+        text-align: center;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding: 15px;
+        border-radius: 10px;
+        font-weight: bold;
+      }
+
+      .status.connected {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .status.disconnected {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+
+      .status.connected .status-dot {
+        background: #28a745;
+      }
+
+      .status.disconnected .status-dot {
+        background: #dc3545;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 2em;
+      }
+
+      .info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        text-align: left;
+      }
+
+      .info h3 {
+        color: #495057;
+        margin-bottom: 10px;
+      }
+
+      .info ul {
+        color: #6c757d;
+        line-height: 1.6;
+      }
+
+      .notifications {
+        margin-top: 30px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .notification {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        text-align: left;
+        animation: slideIn 0.5s ease-out;
+      }
+
+      .notification.game {
+        background: #d1ecf1;
+        border-color: #bee5eb;
+      }
+
+      .notification-header {
+        display: flex;
+        justify-content: between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .notification-title {
+        font-weight: bold;
+        color: #004085;
+        font-size: 1.1em;
+      }
+
+      .notification-time {
+        font-size: 0.8em;
+        color: #6c757d;
+      }
+
+      .notification-content {
+        color: #333;
+        line-height: 1.4;
+      }
+
+      .notification-details {
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #666;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+      }
+
+      .modal-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .modal-title {
+        font-size: 1.5em;
+        margin-bottom: 15px;
+        color: #333;
+      }
+
+      .modal-message {
+        font-size: 1.2em;
+        margin-bottom: 20px;
+        color: #555;
+      }
+
+      .modal-details {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: left;
+        font-size: 0.9em;
+        color: #666;
+      }
+
+      .close-btn {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background 0.3s;
+      }
+
+      .close-btn:hover {
+        background: #0056b3;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+      }
+
+      .stat-item {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .stat-number {
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+      }
+
+      .stat-label {
+        font-size: 0.9em;
+        color: #6c757d;
+        margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎮 遊戲通知系統</h1>
+
+      <div id="status" class="status disconnected">
+        <div class="status-dot"></div>
+        <span id="statusText">連接中...</span>
+      </div>
+
+      <div class="stats">
+        <div class="stat-item">
+          <div class="stat-number" id="clientCount">0</div>
+          <div class="stat-label">連線用戶</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="notificationCount">0</div>
+          <div class="stat-label">今日通知</div>
+        </div>
+      </div>
+
+      <div class="info">
+        <h3>📋 系統說明</h3>
+        <ul>
+          <li>監控指定的 Discord 頻道</li>
+          <li>當有人發送遊戲相關訊息時立即通知</li>
+          <li>支援關鍵字：王可以打、開團、組隊、來玩等</li>
+          <li>保持此頁面開啟以接收即時通知</li>
+        </ul>
+      </div>
+
+      <div class="notifications">
+        <h3>📢 最新通知</h3>
+        <div id="notificationList"></div>
+      </div>
+    </div>
+
+    <!-- 彈窗通知 -->
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-title" id="modalTitle">🎮 遊戲通知</div>
+        <div class="modal-message" id="modalMessage"></div>
+        <div class="modal-details" id="modalDetails"></div>
+        <button class="close-btn" onclick="closeModal()">確定</button>
+      </div>
+    </div>
+
+    <script>
+      let ws;
+      let notificationCount = 0;
+      let reconnectInterval;
+
+      // 初始化
+      function init() {
+        connectWebSocket();
+        updateStats();
+      }
+
+      // WebSocket 連接
+      function connectWebSocket() {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function () {
+          console.log("WebSocket 連接成功");
+          updateStatus(true);
+          clearInterval(reconnectInterval);
+        };
+
+        ws.onmessage = function (event) {
+          const data = JSON.parse(event.data);
+          handleMessage(data);
+        };
+
+        ws.onclose = function () {
+          console.log("WebSocket 連接關閉");
+          updateStatus(false);
+          // 自動重連
+          reconnectInterval = setInterval(connectWebSocket, 5000);
+        };
+
+        ws.onerror = function (error) {
+          console.error("WebSocket 錯誤:", error);
+          updateStatus(false);
+        };
+      }
+
+      // 處理訊息
+      function handleMessage(data) {
+        switch (data.type) {
+          case "connection":
+            console.log("連接訊息:", data.message);
+            break;
+          case "game_notification":
+            showNotification(data);
+            addNotificationToList(data);
+            notificationCount++;
+            updateStats();
+            break;
+        }
+      }
+
+      // 顯示彈窗通知
+      function showNotification(data) {
+        document.getElementById("modalTitle").textContent = data.title;
+        document.getElementById("modalMessage").textContent = data.message;
+
+        if (data.details) {
+          const details = `
+                    <strong>發送者:</strong> ${data.details.user}<br>
+                    <strong>頻道:</strong> ${data.details.channel}<br>
+                    <strong>伺服器:</strong> ${data.details.server}<br>
+                    <strong>原始訊息:</strong> ${data.details.originalMessage}
+                `;
+          document.getElementById("modalDetails").innerHTML = details;
+        }
+
+        document.getElementById("modal").style.display = "block";
+
+        // 播放通知音效（如果支援）
+        playNotificationSound();
+      }
+
+      // 添加通知到列表
+      function addNotificationToList(data) {
+        const notificationList = document.getElementById("notificationList");
+        const notification = document.createElement("div");
+        notification.className = "notification game";
+
+        const time = new Date(data.details.timestamp).toLocaleTimeString();
+
+        notification.innerHTML = `
+                <div class="notification-header">
+                    <div class="notification-title">${data.title}</div>
+                    <div class="notification-time">${time}</div>
+                </div>
+                <div class="notification-content">${data.message}</div>
+                <div class="notification-details">
+                    <strong>發送者:</strong> ${data.details.user} | 
+                    <strong>頻道:</strong> ${data.details.channel}
+                </div>
+            `;
+
+        notificationList.insertBefore(
+          notification,
+          notificationList.firstChild
+        );
+
+        // 限制顯示最新 10 條通知
+        while (notificationList.children.length > 10) {
+          notificationList.removeChild(notificationList.lastChild);
+        }
+      }
+
+      // 關閉彈窗
+      function closeModal() {
+        document.getElementById("modal").style.display = "none";
+      }
+
+      // 更新連接狀態
+      function updateStatus(connected) {
+        const status = document.getElementById("status");
+        const statusText = document.getElementById("statusText");
+
+        if (connected) {
+          status.className = "status connected";
+          statusText.textContent = "已連接";
+        } else {
+          status.className = "status disconnected";
+          statusText.textContent = "連接中...";
+        }
+      }
+
+      // 更新統計資料
+      function updateStats() {
+        document.getElementById("notificationCount").textContent =
+          notificationCount;
+
+        // 獲取系統狀態
+        fetch("/api/status")
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById("clientCount").textContent =
+              data.connectedClients;
+          })
+          .catch((error) => console.error("獲取狀態失敗:", error));
+      }
+
+      // 播放通知音效
+      function playNotificationSound() {
+        // 創建音效（簡單的 beep 聲）
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = 800;
+        oscillator.type = "sine";
+
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.5
+        );
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      }
+
+      // 點擊模態框外部關閉
+      window.onclick = function (event) {
+        const modal = document.getElementById("modal");
+        if (event.target === modal) {
+          closeModal();
+        }
+      };
+
+      // 頁面載入時初始化
+      window.onload = init;
+
+      // 頁面關閉時清理
+      window.onbeforeunload = function () {
+        if (ws) {
+          ws.close();
+        }
+      };
+    </script>
+  </body>
+</html>
