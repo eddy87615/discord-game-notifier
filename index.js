@@ -10,6 +10,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   REST,
   Routes,
 } = require("discord.js");
@@ -156,6 +158,11 @@ client.on("interactionCreate", async (interaction) => {
       } else if (interaction.customId.startsWith("reaction_")) {
         await handleReactionButton(interaction);
       }
+    } else if (interaction.isStringSelectMenu()) {
+      console.log(`📋 處理下拉選單選擇: ${interaction.customId}`);
+      if (interaction.customId.startsWith("channel_select_")) {
+        await handleChannelSelectMenu(interaction);
+      }
     } else if (interaction.isModalSubmit()) {
       console.log(`📋 處理 Modal 提交: ${interaction.customId}`);
       await handleModalSubmit(interaction);
@@ -214,7 +221,7 @@ async function showNotificationTypeButtons(interaction) {
   });
 }
 
-// 處理按鈕點擊
+// 處理按鈕點擊 - 顯示頻道選擇
 async function handleButtonInteraction(interaction) {
   const notificationTypes = {
     type_boss: {
@@ -226,15 +233,9 @@ async function handleButtonInteraction(interaction) {
     type_team: {
       title: "🎮 開團通知",
       color: "#00FF00",
-      placeholder: "例如：101缺速缺補！",
+      placeholder: "例如：101缺速缺補！拉圖斯缺大法ＱＱ",
       emoji: "🎮",
     },
-    // type_recruit: {
-    //   title: "👥 招募通知",
-    //   color: "#0099FF",
-    //   placeholder: "例如：公會招募新成員，歡迎加入！",
-    //   emoji: "👥",
-    // },
     type_general: {
       title: "📝 一般通知",
       color: "#FFA500",
@@ -252,9 +253,119 @@ async function handleButtonInteraction(interaction) {
   const typeInfo = notificationTypes[interaction.customId];
   if (!typeInfo) return;
 
+  await showChannelSelectMenu(interaction, interaction.customId, typeInfo);
+}
+
+// 顯示頻道選擇下拉選單
+async function showChannelSelectMenu(interaction, notificationType, typeInfo) {
+  const embed = new EmbedBuilder()
+    .setColor(typeInfo.color)
+    .setTitle(`${typeInfo.emoji} ${typeInfo.title}`)
+    .setDescription("請選擇要發送通知的頻道：")
+    .setTimestamp();
+
+  const channelOptions = [];
+  
+  // 從 .env 檔案中獲取頻道ID並創建選項
+  if (process.env.NOTIFY_CHANNEL_IDS) {
+    const envChannelIds = process.env.NOTIFY_CHANNEL_IDS.split(",");
+    
+    // 添加全部頻道選項
+    channelOptions.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel("📌 全部頻道")
+        .setDescription("發送到所有設定的頻道")
+        .setValue("all_channels")
+        .setEmoji("📌")
+    );
+    
+    // 為每個頻道創建選項
+    for (const channelId of envChannelIds) {
+      try {
+        const channel = interaction.guild.channels.cache.get(channelId.trim());
+        if (channel && channel.isTextBased()) {
+          channelOptions.push(
+            new StringSelectMenuOptionBuilder()
+              .setLabel(`# ${channel.name}`)
+              .setDescription(`頻道 ID: ${channel.id}`)
+              .setValue(channel.id)
+              .setEmoji("📝")
+          );
+        }
+      } catch (error) {
+        console.log(`⚠️  找不到頻道ID: ${channelId}`);
+      }
+    }
+  } else {
+    // 如果沒有設定環境變數，顯示錯誤訊息
+    channelOptions.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel("❌ 未設定頻道")
+        .setDescription("請在 .env 檔案中設定 NOTIFY_CHANNEL_IDS")
+        .setValue("no_channels")
+        .setEmoji("❌")
+    );
+  }
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId(`channel_select_${notificationType}_${Date.now()}`)
+    .setPlaceholder("選擇一個或多個頻道...")
+    .addOptions(channelOptions)
+    .setMinValues(1)
+    .setMaxValues(Math.min(channelOptions.length, 10)); // 最多選10個頻道
+
+  const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [selectRow],
+    ephemeral: true,
+  });
+}
+
+// 處理頻道選擇下拉選單
+async function handleChannelSelectMenu(interaction) {
+  const customId = interaction.customId;
+  const selectedChannels = interaction.values;
+  
+  // 解析 customId 來獲取通知類型
+  const parts = customId.split('_');
+  const notificationType = `${parts[2]}_${parts[3]}`;
+  
+  // 獲取通知類型資訊
+  const notificationTypes = {
+    type_boss: {
+      title: "🐉 野王通知",
+      color: "#FF0000",
+      placeholder: "例如：殭屍菇菇出現了！！",
+      emoji: "🐉",
+    },
+    type_team: {
+      title: "🎮 開團通知",
+      color: "#00FF00",
+      placeholder: "例如：101缺速缺補！拉圖斯缺大法ＱＱ",
+      emoji: "🎮",
+    },
+    type_general: {
+      title: "📝 一般通知",
+      color: "#FFA500",
+      placeholder: "例如：今天有活動，大家記得參加！",
+      emoji: "📝",
+    },
+    type_urgent: {
+      title: "🚨 緊急通知",
+      color: "#FF1493",
+      placeholder: "例如：緊急集合！健太跟燒肉要結婚了！",
+      emoji: "🚨",
+    },
+  };
+
+  const typeInfo = notificationTypes[notificationType];
+  if (!typeInfo) return;
+
   // 創建 Modal
   const modal = new ModalBuilder()
-    .setCustomId(`modal_${interaction.customId}`)
+    .setCustomId(`modal_${notificationType}_${Date.now()}`)
     .setTitle(typeInfo.title);
 
   const messageInput = new TextInputBuilder()
@@ -270,16 +381,25 @@ async function handleButtonInteraction(interaction) {
     .setCustomId("notification_description")
     .setLabel("詳細說明（可選）")
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder("例如：頻道，等級限制，其他備註...")
+    .setPlaceholder("例如：等級限制，其他備註...")
     .setMaxLength(500)
     .setRequired(false);
 
   const firstActionRow = new ActionRowBuilder().addComponents(messageInput);
-  const secondActionRow = new ActionRowBuilder().addComponents(
-    descriptionInput
-  );
+  const secondActionRow = new ActionRowBuilder().addComponents(descriptionInput);
 
   modal.addComponents(firstActionRow, secondActionRow);
+
+  // 儲存頻道選擇到臨時變數
+  const tempId = `${notificationType}_${Date.now()}`;
+  global.pendingNotifications = global.pendingNotifications || {};
+  global.pendingNotifications[`channels_${tempId}`] = {
+    channels: selectedChannels,
+    timestamp: Date.now(),
+  };
+
+  // 更新 modal customId 以包含臨時 ID
+  modal.setCustomId(`modal_${tempId}`);
 
   await interaction.showModal(modal);
 }
@@ -287,45 +407,46 @@ async function handleButtonInteraction(interaction) {
 // 處理 Modal 提交
 async function handleModalSubmit(interaction) {
   const modalId = interaction.customId;
-  const notificationType = modalId.replace("modal_type_", "");
+  const tempId = modalId.replace("modal_", "");
+  
+  // 從 tempId 解析通知類型 (格式: type_name_timestamp)
+  const parts = tempId.split('_');
+  const notificationType = parts.length >= 3 ? `${parts[0]}_${parts[1]}` : parts[0];
+  
   const message = interaction.fields.getTextInputValue("notification_message");
   const description =
     interaction.fields.getTextInputValue("notification_description") || "";
+  
+  // 從臨時儲存中獲取頻道選擇
+  const channelData = global.pendingNotifications[`channels_${tempId}`];
+  const selectedChannels = channelData ? channelData.channels : [];
+  console.log(`🔍 tempId: ${tempId}, 找到頻道數據: ${channelData ? '是' : '否'}, 選擇的頻道: ${JSON.stringify(selectedChannels)}`);
 
   const typeConfig = {
-    boss: {
+    type_boss: {
       title: "🐉 野王通知",
       color: "#FF0000",
-      //   emoji: "🐉",
-      //   alertLevel: "@everyone",
+      alertLevel: "@here",
     },
-    team: {
+    type_team: {
       title: "🎮 開團通知",
       color: "#00FF00",
-      //   emoji: "🎮",
-      //   alertLevel: "@here",
+      alertLevel: "@here",
     },
-    // recruit: {
-    //   title: "👥 招募通知",
-    //   color: "#0099FF",
-    //   emoji: "👥",
-    //   alertLevel: "@here",
-    // },
-    general: {
+    type_general: {
       title: "📝 一般通知",
       color: "#FFA500",
-      //   emoji: "📝",
-      //   alertLevel: "@here",
+      alertLevel: "@here",
     },
-    urgent: {
+    type_urgent: {
       title: "🚨 緊急通知",
       color: "#FF1493",
-      //   emoji: "🚨",
-      //   alertLevel: "@everyone",
+      alertLevel: "@everyone",
     },
   };
 
   const config = typeConfig[notificationType];
+  console.log(`🔍 解析通知類型: ${notificationType}, 找到設定: ${config ? '是' : '否'}`);
   if (!config) return;
 
   // 生成唯一的確認 ID
@@ -340,11 +461,35 @@ async function handleModalSubmit(interaction) {
     .addFields(
       { name: "通知類型", value: config.title, inline: true },
       { name: "發送者", value: interaction.user.username, inline: true },
-      //   { name: "提醒等級", value: config.alertLevel, inline: true },
+      { name: "提醒等級", value: config.alertLevel, inline: true },
       { name: "通知訊息", value: message, inline: false }
     )
     .setFooter({ text: "此預覽將在 10 分鐘後過期" })
     .setTimestamp();
+
+  // 顯示選擇的頻道
+  if (selectedChannels && selectedChannels.length > 0) {
+    let channelDisplay = "";
+    for (const channelValue of selectedChannels) {
+      if (channelValue === "all_channels") {
+        channelDisplay += "📌 全部頻道\n";
+      } else if (channelValue === "no_channels") {
+        channelDisplay += "❌ 未設定頻道\n";
+      } else {
+        try {
+          const channel = interaction.guild.channels.cache.get(channelValue);
+          channelDisplay += `# ${channel ? channel.name : channelValue}\n`;
+        } catch {
+          channelDisplay += `# ${channelValue}\n`;
+        }
+      }
+    }
+    confirmEmbed.addFields({
+      name: "選擇的頻道",
+      value: channelDisplay.trim(),
+      inline: false,
+    });
+  }
 
   if (description) {
     confirmEmbed.addFields({
@@ -378,9 +523,13 @@ async function handleModalSubmit(interaction) {
     config: config,
     message: message,
     description: description,
+    selectedChannels: selectedChannels,
     sender: interaction.user,
-    timestamp: timestamp, // 使用相同的時間戳
+    timestamp: timestamp,
   };
+  
+  // 清理臨時頻道數據
+  delete global.pendingNotifications[`channels_${tempId}`];
 
   console.log(`💾 已儲存通知數據: ${confirmId}`);
 }
@@ -472,10 +621,33 @@ async function handleReactionButton(interaction) {
 
 // 發送通知到指定頻道
 async function sendNotificationToChannels(notificationData, interaction) {
-  const notifyChannels = process.env.NOTIFY_CHANNEL_IDS?.split(",") || [];
+  let notifyChannels = [];
+
+  console.log(`📤 發送通知，選擇的頻道: ${JSON.stringify(notificationData.selectedChannels)}`);
+  
+  // 如果用戶有指定頻道，使用用戶指定的頻道
+  if (notificationData.selectedChannels && notificationData.selectedChannels.length > 0) {
+    for (const channelValue of notificationData.selectedChannels) {
+      try {
+        if (channelValue === "all_channels") {
+          // 使用所有設定的頻道
+          const allChannels = process.env.NOTIFY_CHANNEL_IDS?.split(",").map(id => id.trim()) || [];
+          notifyChannels.push(...allChannels);
+        } else if (channelValue !== "no_channels") {
+          // 直接使用頻道ID (從下拉選單選擇的都是ID)
+          notifyChannels.push(channelValue);
+        }
+      } catch (error) {
+        console.error(`❌ 解析頻道時出錯 "${channelValue}":`, error.message);
+      }
+    }
+  } else {
+    // 如果用戶沒有指定頻道，使用環境變數設定的預設頻道
+    notifyChannels = process.env.NOTIFY_CHANNEL_IDS?.split(",").map(id => id.trim()) || [];
+  }
 
   if (notifyChannels.length === 0) {
-    console.log("未設定通知頻道");
+    console.log("未設定通知頻道且未指定頻道");
     return;
   }
 
@@ -527,16 +699,18 @@ async function sendNotificationToChannels(notificationData, interaction) {
       const channel = await client.channels.fetch(channelId);
       if (channel && channel.isTextBased()) {
         await channel.send({
-          content: ` ${notificationData.config.title}`,
+          content: `${notificationData.config.alertLevel} ${notificationData.config.title}`,
           embeds: [embed],
           //   components: [buttons],
         });
-        console.log(`✅ 通知已發送到頻道: ${channel.name}`);
+        console.log(`✅ 通知已發送到頻道: ${channel.name} (${channelId})`);
       }
     } catch (error) {
       console.error(`❌ 無法發送通知到頻道 ${channelId}:`, error.message);
     }
   }
+
+  console.log(`📊 總共發送到 ${notifyChannels.length} 個頻道`);
 }
 
 // 發送私訊通知
